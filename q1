@@ -1,0 +1,47 @@
+Assuming:
+
+WAN/External Interface = Connected to 192.168.74.0/24 bridge network
+External IP = 192.168.74.X
+Internal Server IP = 192.168.1.10
+Traffic arriving on TCP 80 should be forwarded to 192.168.1.10:8080
+Default policy should be DROP
+Using iptables
+A. Port Forward TCP 80 → 192.168.1.10:8080 and Log Traffic
+# Enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Log incoming HTTP traffic
+iptables -t nat -A PREROUTING -p tcp --dport 80 \
+-j LOG --log-prefix "HTTP_FORWARD: "
+
+# Forward traffic to internal server port 8080
+iptables -t nat -A PREROUTING -p tcp --dport 80 \
+-j DNAT --to-destination 192.168.1.10:8080
+B. Allow Forwarded Traffic and Related Return Packets
+# Allow incoming forwarded traffic
+iptables -A FORWARD -p tcp -d 192.168.1.10 --dport 8080 \
+-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+
+# Allow return traffic
+iptables -A FORWARD -p tcp -s 192.168.1.10 --sport 8080 \
+-m state --state ESTABLISHED,RELATED -j ACCEPT
+Source NAT (MASQUERADE)
+
+Required so responses return through the firewall.
+
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+Replace eth0 with your WAN interface.
+
+C. Drop Everything Else
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+
+Allow established connections:
+
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+Verify Rules
+iptables -L -n -v
+iptables -t nat -L -n -v
